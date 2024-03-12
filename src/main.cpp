@@ -1,5 +1,31 @@
 /*
+  Copyright 2024 Keith E Henry
+  (Based on the ideas and code of many creative individuals before me.)
 
+  MIT License
+
+  Mailbox notifier with ESP-01S.
+
+  Configuration:
+    Carefully remove (de-solder) the pullup on EN and add an external 10K pulldown instead.
+    Connect RX to EN and connect them to one end of a momentary contact (e.g. reed) switch.
+    Connect the other end of the switch to Vcc.
+    Connect Vcc and Gnd to 3.3V power.
+
+    Optionally, add a jumper between GPIO0 and GPIO2.
+
+  Operation:
+    When the switch is activated, EN high enables the ESP8266. [Reset is pulled high on the module.]
+    RX is immediately driven high, setting EN high, allowing the switch to be deactivated.
+    When finish sending the MAC address to the receiver, RX is released, allowing the 10K pulldown
+        to disable the ESP8266. [RX never pulls low, in case the switch remains activated.]
+    If the switch does remain activated, deep sleep mode is set, until EN goes low.
+    Disabled mode is spec'd to use only 3uA, as opposed to 20uA for deep sleep.
+
+    Both GPIO0 and GPIO2 are pulled high, as needed for normal power up, on the module.
+    Once started, GPIO0 is driven low and GPIO2 is sensed. If GPIO2 is now low, there must
+      be a jumper between them. If so, forget about normal operation and use the ElegantOTA
+      library to reload new programming.
 */
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
@@ -10,6 +36,8 @@
 /* of the form:
 const char *ssid = ".....";
 const char *password = ".....";
+// Receiver MAC address:
+uint8_t broadcastAddress[] = {0x60, 0x50, 0x40, 0x30, 0x20, 0x10};
 */
 
 ESP8266WebServer server(80);
@@ -24,12 +52,6 @@ static const uint8_t D3 = 0;  // GPIO 0
 static const uint8_t D4 = 2;  // GPIO 2
 static const uint8_t RX = 3;  // GPIO 3
 static const uint8_t TX = 1;  // GPIO 1
-
-// Receiver MAC Address
-// D1 mimi V4:
-// uint8_t broadcastAddress[] = {0x60, 0x01, 0x94, 0x45, 0x75, 0xb8};
-// ESP-01S:
-uint8_t broadcastAddress[] = {0x60, 0x01, 0x94, 0x25, 0x11, 0xfb};
 
 // Callback when data is sent
 void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus) {
